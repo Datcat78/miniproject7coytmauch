@@ -200,5 +200,85 @@ def get_post(post_id: int) -> dict[str, Any]:
     return practice_hub_request(lambda client: client.get_post(post_id))
 
 
+@mcp.tool()
+def create_post(title: str, body: str = "", tags: list[str] | None = None) -> dict[str, Any]:
+    """Create a new Practice Hub post owned by the authenticated user.
+
+    Call this only when the user wants to publish a brand-new post. To change
+    a post that already exists, use update_post instead.
+
+    Args:
+        title: The post title (required, 1-200 characters).
+        body: The post text. Defaults to an empty body.
+        tags: A list of tag strings, such as ["python", "mcp"]. Defaults to no
+            tags.
+
+    Returns:
+        On success: {"ok": true, "data": <new post>}. The new post's ID is
+        data.id; use it with get_post, update_post, or delete_post.
+        On failure: {"ok": false, "status": <int or null>, "error": <message>}.
+        Status 422 means the Hub rejected the title, body, or tags.
+    """
+    return practice_hub_request(lambda client: client.create_post(title, body, tags))
+
+
+@mcp.tool()
+def update_post(
+    post_id: int,
+    title: str | None = None,
+    body: str | None = None,
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    """Edit an existing Practice Hub post owned by the authenticated user.
+
+    Call this when the user wants to change the title, body, or tags of a post
+    that already exists. Pass only the fields to change; any field left out
+    keeps its current value. tags replaces the whole tag list, so to add or
+    remove a single tag, call get_post first and send the full new list.
+
+    Args:
+        post_id: The integer ID of the post to edit (from list_posts or
+            get_post).
+        title: New title, or omit to keep the current title.
+        body: New body text, or omit to keep the current body.
+        tags: New complete list of tag strings, or omit to keep the current
+            tags. An empty list [] removes all tags.
+
+    Returns:
+        On success: {"ok": true, "data": <updated post>}.
+        On failure: {"ok": false, "status": <int or null>, "error": <message>}.
+        Status 403 means the user does not own this post; 404 means no post
+        has that ID.
+    """
+    # Send only the fields the caller gave, so the Hub keeps the others (PATCH).
+    changes = {"title": title, "body": body, "tags": tags}
+    fields = {name: value for name, value in changes.items() if value is not None}
+    return practice_hub_request(lambda client: client.update_post(post_id, **fields))
+
+
+@mcp.tool()
+def delete_post(post_id: int) -> dict[str, Any]:
+    """Permanently delete a Practice Hub post owned by the authenticated user.
+
+    Call this only when the user clearly asks to delete a specific post. This
+    cannot be undone, so if you are not sure which post they mean, confirm the
+    ID with list_posts(mine=True) or get_post first.
+
+    Args:
+        post_id: The integer ID of the post to delete.
+
+    Returns:
+        On success: {"ok": true, "post_id": <int>, "message": <confirmation>}.
+        On failure: {"ok": false, "status": <int or null>, "error": <message>}.
+        Status 403 means the user does not own this post; 404 means no post
+        has that ID.
+    """
+    # The Hub answers a successful DELETE with 204 No Content (an empty body).
+    result = practice_hub_request(lambda client: client.delete_post(post_id))
+    if result["ok"]:
+        return {"ok": True, "post_id": post_id, "message": f"Post {post_id} was deleted."}
+    return result
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
