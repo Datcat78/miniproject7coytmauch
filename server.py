@@ -142,5 +142,63 @@ def _redact(text: str) -> str:
     return text
 
 
+# Tools
+
+@mcp.tool()
+def list_posts(mine: bool = False) -> dict[str, Any]:
+    """List posts on the Practice Hub.
+
+    Call this to see which posts exist, or to find a post's ID before calling
+    get_post or any tool that changes a post. Use mine=True when the user asks
+    about their own posts ("my posts"), and before updating or deleting a post,
+    because only posts the user owns can be changed.
+
+    Args:
+        mine: True returns only posts owned by the user whose API token this
+            server uses. False (the default) returns posts from all users.
+
+    Returns:
+        On success: {"ok": true, "count": <int>, "post_ids": [<int>, ...],
+        "data": [<post>, ...]}. Each post has id, title, body, tags,
+        author_id, author_name, created_at, updated_at, and attachments. Use a
+        value from post_ids as the post_id argument of other post tools. The
+        Hub returns at most 50 posts per request.
+        On failure: {"ok": false, "status": <int or null>, "error": <message>}.
+    """
+    if mine:
+        result = practice_hub_request(lambda client: client.list_posts(mine=True))  # GET /posts?mine=true
+    else:
+        # client.list_posts() always adds ?mine=false, so call the plain endpoint directly.
+        result = practice_hub_request(lambda client: client._request("GET", "/posts"))
+
+    posts = result.get("data")
+    if result["ok"] and isinstance(posts, list):
+        post_ids = [post["id"] for post in posts if isinstance(post, dict) and "id" in post]
+        return {"ok": True, "count": len(posts), "post_ids": post_ids, "data": posts}
+    return result
+
+
+@mcp.tool()
+def get_post(post_id: int) -> dict[str, Any]:
+    """Get one Practice Hub post by its ID, including its full body.
+
+    Call this when you need a single post's complete, current content: to
+    show or summarize it, to confirm it exists, or to check its fields before
+    updating or deleting it. If you do not know the ID, call list_posts first.
+
+    Args:
+        post_id: The post's integer ID, taken from list_posts (post_ids or a
+            post's "id" field) or given by the user.
+
+    Returns:
+        On success: {"ok": true, "data": <post>}, where the post has id, title,
+        body, tags, author_id, author_name, created_at, updated_at, and
+        attachments.
+        On failure: {"ok": false, "status": <int or null>, "error": <message>}.
+        Status 404 means no post has that ID.
+    """
+    return practice_hub_request(lambda client: client.get_post(post_id))
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
